@@ -21,7 +21,7 @@ Ticket could be of any length, but for camouflage purposes it's better to use un
 and common length. See https://tlsfingerprint.io/session-tickets`)
 )
 
-var requestHostname = "facebook.com" // speaks http2 and TLS 1.3
+var requestHostname = "baidu.com" // speaks http2 and TLS 1.3
 var requestAddr = "31.13.72.36:443"
 
 func HttpGetDefault(hostname string, addr string) (*http.Response, error) {
@@ -36,7 +36,8 @@ func HttpGetDefault(hostname string, addr string) (*http.Response, error) {
 }
 
 func HttpGetByHelloID(hostname string, addr string, helloID tls.ClientHelloID) (*http.Response, error) {
-	config := tls.Config{ServerName: hostname}
+	config := tls.Config{ServerName: hostname, MinVersion: tls.VersionTLS13,
+		MaxVersion: tls.VersionTLS13}
 	dialConn, err := net.DialTimeout("tcp", addr, dialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("net.DialTimeout error: %+v", err)

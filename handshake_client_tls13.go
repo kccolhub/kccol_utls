@@ -78,8 +78,8 @@ func (ksp *KeySharesParameters) GetKemPubkey(curveID CurveID) (params kem.Public
 type clientHandshakeStateTLS13 struct {
 	c               *Conn
 	ctx             context.Context
-	serverHello     *serverHelloMsg
-	hello           *clientHelloMsg
+	serverHello     *ServerHelloMsg
+	hello           *ClientHelloMsg
 	ecdheKey        *ecdh.PrivateKey
 	kemKey          *kemPrivateKey       // [uTLS] ported from cloudflare/go
 	keySharesParams *KeySharesParameters // [uTLS] support both ecdhe and kem
@@ -472,13 +472,13 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		return err
 	}
 
-	// serverHelloMsg is not included in the transcript
+	// ServerHelloMsg is not included in the transcript
 	msg, err := c.readHandshake(nil)
 	if err != nil {
 		return err
 	}
 
-	serverHello, ok := msg.(*serverHelloMsg)
+	serverHello, ok := msg.(*ServerHelloMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(serverHello, msg)
@@ -754,12 +754,12 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		}
 		if processedMsg != nil {
 			skipWritingCertToTranscript = true
-			msg = processedMsg // msg is now a processed-by-extension certificateMsg
+			msg = processedMsg // msg is now a processed-by-extension CertificateMsg
 		}
 	}
 	// [UTLS SECTION ENDS]
 
-	certMsg, ok := msg.(*certificateMsgTLS13)
+	certMsg, ok := msg.(*CertificateMsgTLS13)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(certMsg, msg)
@@ -783,7 +783,7 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		return err
 	}
 
-	// certificateVerifyMsg is included in the transcript, but not until
+	// CertificateVerifyMsg is included in the transcript, but not until
 	// after we verify the handshake signature, since the state before
 	// this message was sent is used.
 	msg, err = c.readHandshake(nil)
@@ -791,7 +791,7 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 		return err
 	}
 
-	certVerify, ok := msg.(*certificateVerifyMsg)
+	certVerify, ok := msg.(*CertificateVerifyMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(certVerify, msg)
@@ -827,7 +827,7 @@ func (hs *clientHandshakeStateTLS13) readServerCertificate() error {
 func (hs *clientHandshakeStateTLS13) readServerFinished() error {
 	c := hs.c
 
-	// finishedMsg is included in the transcript, but not until after we
+	// FinishedMsg is included in the transcript, but not until after we
 	// check the client version, since the state before this message was
 	// sent is used during verification.
 	msg, err := c.readHandshake(nil)
@@ -835,7 +835,7 @@ func (hs *clientHandshakeStateTLS13) readServerFinished() error {
 		return err
 	}
 
-	finished, ok := msg.(*finishedMsg)
+	finished, ok := msg.(*FinishedMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(finished, msg)
@@ -892,7 +892,7 @@ func (hs *clientHandshakeStateTLS13) sendClientCertificate() error {
 		return err
 	}
 
-	certMsg := new(certificateMsgTLS13)
+	certMsg := new(CertificateMsgTLS13)
 
 	certMsg.certificate = *cert
 	certMsg.scts = hs.certReq.scts && len(cert.SignedCertificateTimestamps) > 0
@@ -907,7 +907,7 @@ func (hs *clientHandshakeStateTLS13) sendClientCertificate() error {
 		return nil
 	}
 
-	certVerifyMsg := new(certificateVerifyMsg)
+	certVerifyMsg := new(CertificateVerifyMsg)
 	certVerifyMsg.hasSignatureAlgorithm = true
 
 	certVerifyMsg.signatureAlgorithm, err = selectSignatureScheme(c.vers, cert, hs.certReq.supportedSignatureAlgorithms)
@@ -945,7 +945,7 @@ func (hs *clientHandshakeStateTLS13) sendClientCertificate() error {
 func (hs *clientHandshakeStateTLS13) sendClientFinished() error {
 	c := hs.c
 
-	finished := &finishedMsg{
+	finished := &FinishedMsg{
 		verifyData: hs.suite.finishedHash(c.out.trafficSecret, hs.transcript),
 	}
 
@@ -970,7 +970,7 @@ func (hs *clientHandshakeStateTLS13) sendClientFinished() error {
 	return nil
 }
 
-func (c *Conn) handleNewSessionTicket(msg *newSessionTicketMsgTLS13) error {
+func (c *Conn) handleNewSessionTicket(msg *NewSessionTicketMsgTLS13) error {
 	if !c.isClient {
 		c.sendAlert(alertUnexpectedMessage)
 		return errors.New("tls: received new session ticket from a client")

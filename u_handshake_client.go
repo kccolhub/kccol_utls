@@ -44,7 +44,7 @@ func (hs *clientHandshakeStateTLS13) utlsReadServerCertificate(msg any) (process
 }
 
 // called by (*clientHandshakeStateTLS13).utlsReadServerCertificate() when UtlsCompressCertExtension is used
-func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateMsg) (*certificateMsgTLS13, error) {
+func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateMsg) (*CertificateMsgTLS13, error) {
 	var (
 		decompressed io.Reader
 		compressed   = bytes.NewReader(m.compressedCertificateMessage)
@@ -108,7 +108,7 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 		c.sendAlert(alertBadCertificate)
 		return nil, fmt.Errorf("decompressed len (%d) does not match specified len (%d)", n, m.uncompressedLength)
 	}
-	certMsg := new(certificateMsgTLS13)
+	certMsg := new(CertificateMsgTLS13)
 	if !certMsg.unmarshal(rawMsg) {
 		return nil, c.sendAlert(alertUnexpectedMessage)
 	}
@@ -181,7 +181,7 @@ func (hs *clientHandshakeStateTLS13) utlsReadServerParameters(encryptedExtension
 	return nil
 }
 
-func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, clientKeySharePrivate, error) {
+func (c *Conn) makeClientHelloForApplyPreset() (*ClientHelloMsg, clientKeySharePrivate, error) {
 	config := c.config
 
 	// [UTLS SECTION START]
@@ -215,7 +215,7 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, clientKeyShareP
 		clientHelloVersion = VersionTLS12
 	}
 
-	hello := &clientHelloMsg{
+	hello := &ClientHelloMsg{
 		vers:                         clientHelloVersion,
 		compressionMethods:           []uint8{compressionNone},
 		random:                       make([]byte, 32),

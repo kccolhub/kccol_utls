@@ -489,7 +489,7 @@ func (chs *ClientHelloSpec) FromRaw(raw []byte, ctrlFlags ...bool) error {
 		return errors.New("unable to read record type, version, and length")
 	}
 
-	if recordType(contentType) != recordTypeHandshake {
+	if RecordType(contentType) != recordTypeHandshake {
 		return errors.New("record is not a handshake")
 	}
 

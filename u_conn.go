@@ -580,7 +580,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 		return err
 	}
 
-	serverHello, ok := msg.(*serverHelloMsg)
+	serverHello, ok := msg.(*ServerHelloMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(serverHello, msg)
@@ -876,7 +876,7 @@ func makeSupportedVersions(minVers, maxVers uint16) []uint16 {
 }
 
 // Extending (*Conn).readHandshake() to support more customized handshake messages.
-func (c *Conn) utlsHandshakeMessageType(msgType byte) (handshakeMessage, error) {
+func (c *Conn) utlsHandshakeMessageType(msgType byte) (HandshakeMessage, error) {
 	switch msgType {
 	case utlsTypeCompressedCertificate:
 		return new(utlsCompressedCertificateMsg), nil
@@ -949,7 +949,7 @@ func (c *UConn) Read(b []byte) (int, error) {
 	// have already tried to reuse the HTTP connection for a new request.
 	// See https://golang.org/cl/76400046 and https://golang.org/issue/3514
 	if n != 0 && c.input.Len() == 0 && c.rawInput.Len() > 0 &&
-		recordType(c.rawInput.Bytes()[0]) == recordTypeAlert {
+		RecordType(c.rawInput.Bytes()[0]) == recordTypeAlert {
 		if err := c.readRecord(); err != nil {
 			return n, err // will be io.EOF on closeNotify
 		}
@@ -969,7 +969,7 @@ func (c *UConn) handleRenegotiation() error {
 		return err
 	}
 
-	helloReq, ok := msg.(*helloRequestMsg)
+	helloReq, ok := msg.(*HelloRequestMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(helloReq, msg)
@@ -1027,9 +1027,9 @@ func (c *UConn) handlePostHandshakeMessage() error {
 	}
 
 	switch msg := msg.(type) {
-	case *newSessionTicketMsgTLS13:
+	case *NewSessionTicketMsgTLS13:
 		return c.handleNewSessionTicket(msg)
-	case *keyUpdateMsg:
+	case *KeyUpdateMsg:
 		return c.handleKeyUpdate(msg)
 	}
 	// The QUIC layer is supposed to treat an unexpected post-handshake CertificateRequest

@@ -66,13 +66,20 @@ const (
 )
 
 // TLS record types.
-type recordType uint8
+type RecordType uint8
 
 const (
-	recordTypeChangeCipherSpec recordType = 20
-	recordTypeAlert            recordType = 21
-	recordTypeHandshake        recordType = 22
-	recordTypeApplicationData  recordType = 23
+	recordTypeChangeCipherSpec RecordType = 20
+	recordTypeAlert            RecordType = 21
+	recordTypeHandshake        RecordType = 22
+	recordTypeApplicationData  RecordType = 23
+)
+
+const (
+	RecordTypeChangeCipherSpec RecordType = 20
+	RecordTypeAlert            RecordType = 21
+	RecordTypeHandshake        RecordType = 22
+	RecordTypeApplicationData  RecordType = 23
 )
 
 // TLS handshake message types.
@@ -94,6 +101,26 @@ const (
 	typeKeyUpdate           uint8 = 24
 	typeNextProtocol        uint8 = 67  // Not IANA assigned
 	typeMessageHash         uint8 = 254 // synthetic message
+)
+
+const (
+	TypeHelloRequest        uint8 = 0
+	TypeClientHello         uint8 = 1
+	TypeServerHello         uint8 = 2
+	TypeNewSessionTicket    uint8 = 4
+	TypeEndOfEarlyData      uint8 = 5
+	TypeEncryptedExtensions uint8 = 8
+	TypeCertificate         uint8 = 11
+	TypeServerKeyExchange   uint8 = 12
+	TypeCertificateRequest  uint8 = 13
+	TypeServerHelloDone     uint8 = 14
+	TypeCertificateVerify   uint8 = 15
+	TypeClientKeyExchange   uint8 = 16
+	TypeFinished            uint8 = 20
+	TypeCertificateStatus   uint8 = 22
+	TypeKeyUpdate           uint8 = 24
+	TypeNextProtocol        uint8 = 67  // Not IANA assigned
+	TypeMessageHash         uint8 = 254 // synthetic message
 )
 
 // TLS compression types.
@@ -1526,7 +1553,7 @@ func (c *Certificate) leaf() (*x509.Certificate, error) {
 	return x509.ParseCertificate(c.Certificate[0])
 }
 
-type handshakeMessage interface {
+type HandshakeMessage interface {
 	marshal() ([]byte, error)
 	unmarshal([]byte) bool
 }

@@ -26,8 +26,8 @@ import (
 type serverHandshakeState struct {
 	c            *Conn
 	ctx          context.Context
-	clientHello  *clientHelloMsg
-	hello        *serverHelloMsg
+	clientHello  *ClientHelloMsg
+	hello        *ServerHelloMsg
 	suite        *cipherSuite
 	ecdheOk      bool
 	ecSignOk     bool
@@ -132,14 +132,14 @@ func (hs *serverHandshakeState) handshake() error {
 }
 
 // readClientHello reads a ClientHello message and selects the protocol version.
-func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
-	// clientHelloMsg is included in the transcript, but we haven't initialized
+func (c *Conn) readClientHello(ctx context.Context) (*ClientHelloMsg, error) {
+	// ClientHelloMsg is included in the transcript, but we haven't initialized
 	// it yet. The respective handshake functions will record it themselves.
 	msg, err := c.readHandshake(nil)
 	if err != nil {
 		return nil, err
 	}
-	clientHello, ok := msg.(*clientHelloMsg)
+	clientHello, ok := msg.(*ClientHelloMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return nil, unexpectedMessageError(clientHello, msg)
@@ -184,7 +184,7 @@ func (c *Conn) readClientHello(ctx context.Context) (*clientHelloMsg, error) {
 func (hs *serverHandshakeState) processClientHello() error {
 	c := hs.c
 
-	hs.hello = new(serverHelloMsg)
+	hs.hello = new(ServerHelloMsg)
 	hs.hello.vers = c.vers
 
 	foundCompression := false
@@ -573,14 +573,14 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		return err
 	}
 
-	certMsg := new(certificateMsg)
+	certMsg := new(CertificateMsg)
 	certMsg.certificates = hs.cert.Certificate
 	if _, err := hs.c.writeHandshakeRecord(certMsg, &hs.finishedHash); err != nil {
 		return err
 	}
 
 	if hs.hello.ocspStapling {
-		certStatus := new(certificateStatusMsg)
+		certStatus := new(CertificateStatusMsg)
 		certStatus.response = hs.cert.OCSPStaple
 		if _, err := hs.c.writeHandshakeRecord(certStatus, &hs.finishedHash); err != nil {
 			return err
@@ -625,7 +625,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 		}
 	}
 
-	helloDone := new(serverHelloDoneMsg)
+	helloDone := new(ServerHelloDoneMsg)
 	if _, err := hs.c.writeHandshakeRecord(helloDone, &hs.finishedHash); err != nil {
 		return err
 	}
@@ -644,7 +644,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	// If we requested a client certificate, then the client must send a
 	// certificate message, even if it's empty.
 	if c.config.ClientAuth >= RequestClientCert {
-		certMsg, ok := msg.(*certificateMsg)
+		certMsg, ok := msg.(*CertificateMsg)
 		if !ok {
 			c.sendAlert(alertUnexpectedMessage)
 			return unexpectedMessageError(certMsg, msg)
@@ -672,7 +672,7 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	// Get client key exchange
-	ckx, ok := msg.(*clientKeyExchangeMsg)
+	ckx, ok := msg.(*ClientKeyExchangeMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(ckx, msg)
@@ -697,20 +697,20 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	}
 
 	// If we received a client cert in response to our certificate request message,
-	// the client will send us a certificateVerifyMsg immediately after the
-	// clientKeyExchangeMsg. This message is a digest of all preceding
+	// the client will send us a CertificateVerifyMsg immediately after the
+	// ClientKeyExchangeMsg. This message is a digest of all preceding
 	// handshake-layer messages that is signed using the private key corresponding
 	// to the client's certificate. This allows us to verify that the client is in
 	// possession of the private key of the certificate.
 	if len(c.peerCertificates) > 0 {
-		// certificateVerifyMsg is included in the transcript, but not until
+		// CertificateVerifyMsg is included in the transcript, but not until
 		// after we verify the handshake signature, since the state before
 		// this message was sent is used.
 		msg, err = c.readHandshake(nil)
 		if err != nil {
 			return err
 		}
-		certVerify, ok := msg.(*certificateVerifyMsg)
+		certVerify, ok := msg.(*CertificateVerifyMsg)
 		if !ok {
 			c.sendAlert(alertUnexpectedMessage)
 			return unexpectedMessageError(certVerify, msg)
@@ -783,14 +783,14 @@ func (hs *serverHandshakeState) readFinished(out []byte) error {
 		return err
 	}
 
-	// finishedMsg is included in the transcript, but not until after we
+	// FinishedMsg is included in the transcript, but not until after we
 	// check the client version, since the state before this message was
 	// sent is used during verification.
 	msg, err := c.readHandshake(nil)
 	if err != nil {
 		return err
 	}
-	clientFinished, ok := msg.(*finishedMsg)
+	clientFinished, ok := msg.(*FinishedMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(clientFinished, msg)
@@ -820,7 +820,7 @@ func (hs *serverHandshakeState) sendSessionTicket() error {
 	}
 
 	c := hs.c
-	m := new(newSessionTicketMsg)
+	m := new(NewSessionTicketMsg)
 
 	state, err := c.sessionState()
 	if err != nil {
@@ -862,7 +862,7 @@ func (hs *serverHandshakeState) sendFinished(out []byte) error {
 		return err
 	}
 
-	finished := new(finishedMsg)
+	finished := new(FinishedMsg)
 	finished.verifyData = hs.finishedHash.serverSum(hs.masterSecret)
 	if _, err := hs.c.writeHandshakeRecord(finished, &hs.finishedHash); err != nil {
 		return err
@@ -953,7 +953,7 @@ func (c *Conn) processCertsFromClient(certificate Certificate) error {
 	return nil
 }
 
-func clientHelloInfo(ctx context.Context, c *Conn, clientHello *clientHelloMsg) *ClientHelloInfo {
+func clientHelloInfo(ctx context.Context, c *Conn, clientHello *ClientHelloMsg) *ClientHelloInfo {
 	supportedVersions := clientHello.supportedVersions
 	if len(clientHello.supportedVersions) == 0 {
 		supportedVersions = supportedVersionsFromMax(clientHello.vers)

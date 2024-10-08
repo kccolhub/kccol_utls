@@ -99,12 +99,13 @@ type Conn struct {
 	utls utlsConnExtraFields // [UTLS] used for extensive things such as ALPS, PSK, etc
 
 	// input/output
-	in, out   halfConn
-	rawInput  bytes.Buffer // raw input, starting with a record header
-	input     bytes.Reader // application data waiting to be read, from rawInput.Next
-	hand      bytes.Buffer // handshake data waiting to be read
-	buffering bool         // whether records are buffered in sendBuf
-	sendBuf   []byte       // a buffer of records waiting to be sent
+	in, out     halfConn
+	rawInput    bytes.Buffer // raw input, starting with a record header
+	msgRawInput bytes.Buffer //raw input, for msg forward
+	input       bytes.Reader // application data waiting to be read, from rawInput.Next
+	hand        bytes.Buffer // handshake data waiting to be read
+	buffering   bool         // whether records are buffered in sendBuf
+	sendBuf     []byte       // a buffer of records waiting to be sent
 
 	// bytesSent counts the bytes of application data sent.
 	// packetsSent counts packets.
@@ -337,9 +338,9 @@ type cbcMode interface {
 
 // decrypt authenticates and decrypts the record if protection is active at
 // this stage. The returned plaintext might overlap with the input.
-func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
+func (hc *halfConn) decrypt(record []byte) ([]byte, RecordType, error) {
 	var plaintext []byte
-	typ := recordType(record[0])
+	typ := RecordType(record[0])
 	payload := record[recordHeaderLen:]
 
 	// In TLS 1.3, change_cipher_spec messages are to be ignored without being
@@ -416,7 +417,7 @@ func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
 			// Remove padding and find the ContentType scanning from the end.
 			for i := len(plaintext) - 1; i >= 0; i-- {
 				if plaintext[i] != 0 {
-					typ = recordType(plaintext[i])
+					typ = RecordType(plaintext[i])
 					plaintext = plaintext[:i]
 					break
 				}
@@ -637,7 +638,7 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 		return err
 	}
 	hdr := c.rawInput.Bytes()[:recordHeaderLen]
-	typ := recordType(hdr[0])
+	typ := RecordType(hdr[0])
 
 	// No valid TLS record has a type of 0x80, however SSLv2 handshakes
 	// start with a uint16 length where the MSB is set and the first record
@@ -683,6 +684,9 @@ func (c *Conn) readRecordOrCCS(expectChangeCipherSpec bool) error {
 	}
 
 	// Process message.
+	msgLen := recordHeaderLen + n
+	c.msgRawInput.Reset()
+	c.msgRawInput.Write(c.rawInput.Bytes()[:msgLen])
 	record := c.rawInput.Next(recordHeaderLen + n)
 	data, typ, err := c.in.decrypt(record)
 	if err != nil {
@@ -890,7 +894,7 @@ const (
 //
 // In the interests of simplicity and determinism, this code does not attempt
 // to reset the record size once the connection is idle, however.
-func (c *Conn) maxPayloadSizeForWrite(typ recordType) int {
+func (c *Conn) maxPayloadSizeForWrite(typ RecordType) int {
 	if c.config.DynamicRecordSizingDisabled || typ != recordTypeApplicationData {
 		return maxPlaintext
 	}
@@ -969,7 +973,7 @@ var outBufPool = sync.Pool{
 
 // writeRecordLocked writes a TLS record with the given type and payload to the
 // connection and updates the record layer state.
-func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
+func (c *Conn) writeRecordLocked(typ RecordType, data []byte) (int, error) {
 	if c.quic != nil {
 		if typ != recordTypeHandshake {
 			return 0, errors.New("tls: internal error: sending non-handshake message to QUIC transport")
@@ -1043,7 +1047,7 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 // writeHandshakeRecord writes a handshake message to the connection and updates
 // the record layer state. If transcript is non-nil the marshalled message is
 // written to it.
-func (c *Conn) writeHandshakeRecord(msg handshakeMessage, transcript transcriptHash) (int, error) {
+func (c *Conn) writeHandshakeRecord(msg HandshakeMessage, transcript transcriptHash) (int, error) {
 	c.out.Lock()
 	defer c.out.Unlock()
 
@@ -1100,26 +1104,26 @@ func (c *Conn) readHandshake(transcript transcriptHash) (any, error) {
 	return c.unmarshalHandshakeMessage(data, transcript)
 }
 
-func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash) (handshakeMessage, error) {
-	var m handshakeMessage
+func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash) (HandshakeMessage, error) {
+	var m HandshakeMessage
 	switch data[0] {
 	case typeHelloRequest:
-		m = new(helloRequestMsg)
+		m = new(HelloRequestMsg)
 	case typeClientHello:
-		m = new(clientHelloMsg)
+		m = new(ClientHelloMsg)
 	case typeServerHello:
-		m = new(serverHelloMsg)
+		m = new(ServerHelloMsg)
 	case typeNewSessionTicket:
 		if c.vers == VersionTLS13 {
-			m = new(newSessionTicketMsgTLS13)
+			m = new(NewSessionTicketMsgTLS13)
 		} else {
-			m = new(newSessionTicketMsg)
+			m = new(NewSessionTicketMsg)
 		}
 	case typeCertificate:
 		if c.vers == VersionTLS13 {
-			m = new(certificateMsgTLS13)
+			m = new(CertificateMsgTLS13)
 		} else {
-			m = new(certificateMsg)
+			m = new(CertificateMsg)
 		}
 	case typeCertificateRequest:
 		if c.vers == VersionTLS13 {
@@ -1130,27 +1134,27 @@ func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash)
 			}
 		}
 	case typeCertificateStatus:
-		m = new(certificateStatusMsg)
+		m = new(CertificateStatusMsg)
 	case typeServerKeyExchange:
-		m = new(serverKeyExchangeMsg)
+		m = new(ServerKeyExchangeMsg)
 	case typeServerHelloDone:
-		m = new(serverHelloDoneMsg)
+		m = new(ServerHelloDoneMsg)
 	case typeClientKeyExchange:
-		m = new(clientKeyExchangeMsg)
+		m = new(ClientKeyExchangeMsg)
 	case typeCertificateVerify:
-		m = &certificateVerifyMsg{
+		m = &CertificateVerifyMsg{
 			hasSignatureAlgorithm: c.vers >= VersionTLS12,
 		}
 	case typeFinished:
-		m = new(finishedMsg)
+		m = new(FinishedMsg)
 	// [uTLS] Commented typeEncryptedExtensions to force
 	// utlsHandshakeMessageType to handle it
 	// case typeEncryptedExtensions:
 	// 	m = new(encryptedExtensionsMsg)
 	case typeEndOfEarlyData:
-		m = new(endOfEarlyDataMsg)
+		m = new(EndOfEarlyDataMsg)
 	case typeKeyUpdate:
-		m = new(keyUpdateMsg)
+		m = new(KeyUpdateMsg)
 	default:
 		// [UTLS SECTION BEGINS]
 		var err error
@@ -1255,7 +1259,7 @@ func (c *Conn) handleRenegotiation() error {
 		return err
 	}
 
-	helloReq, ok := msg.(*helloRequestMsg)
+	helloReq, ok := msg.(*HelloRequestMsg)
 	if !ok {
 		c.sendAlert(alertUnexpectedMessage)
 		return unexpectedMessageError(helloReq, msg)
@@ -1307,9 +1311,9 @@ func (c *Conn) handlePostHandshakeMessage() error {
 	}
 
 	switch msg := msg.(type) {
-	case *newSessionTicketMsgTLS13:
+	case *NewSessionTicketMsgTLS13:
 		return c.handleNewSessionTicket(msg)
-	case *keyUpdateMsg:
+	case *KeyUpdateMsg:
 		return c.handleKeyUpdate(msg)
 	}
 	// The QUIC layer is supposed to treat an unexpected post-handshake CertificateRequest
@@ -1320,7 +1324,7 @@ func (c *Conn) handlePostHandshakeMessage() error {
 	return fmt.Errorf("tls: received unexpected handshake message of type %T", msg)
 }
 
-func (c *Conn) handleKeyUpdate(keyUpdate *keyUpdateMsg) error {
+func (c *Conn) handleKeyUpdate(keyUpdate *KeyUpdateMsg) error {
 	if c.quic != nil {
 		c.sendAlert(alertUnexpectedMessage)
 		return c.in.setErrorLocked(errors.New("tls: received unexpected key update message"))
@@ -1338,7 +1342,7 @@ func (c *Conn) handleKeyUpdate(keyUpdate *keyUpdateMsg) error {
 		c.out.Lock()
 		defer c.out.Unlock()
 
-		msg := &keyUpdateMsg{}
+		msg := &KeyUpdateMsg{}
 		msgBytes, err := msg.marshal()
 		if err != nil {
 			return err
@@ -1397,7 +1401,7 @@ func (c *Conn) Read(b []byte) (int, error) {
 	// have already tried to reuse the HTTP connection for a new request.
 	// See https://golang.org/cl/76400046 and https://golang.org/issue/3514
 	if n != 0 && c.input.Len() == 0 && c.rawInput.Len() > 0 &&
-		recordType(c.rawInput.Bytes()[0]) == recordTypeAlert {
+		RecordType(c.rawInput.Bytes()[0]) == recordTypeAlert {
 		if err := c.readRecord(); err != nil {
 			return n, err // will be io.EOF on closeNotify
 		}

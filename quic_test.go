@@ -285,7 +285,7 @@ func TestQUICPostHandshakeKeyUpdate(t *testing.T) {
 		t.Fatalf("error during connection handshake: %v", err)
 	}
 
-	keyUpdate := new(keyUpdateMsg)
+	keyUpdate := new(KeyUpdateMsg)
 	keyUpdateBytes, err := keyUpdate.marshal()
 	if err != nil {
 		t.Fatal(err)

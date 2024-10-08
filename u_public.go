@@ -266,11 +266,11 @@ type PubServerHelloMsg struct {
 
 }
 
-func (shm *PubServerHelloMsg) getPrivatePtr() *serverHelloMsg {
+func (shm *PubServerHelloMsg) getPrivatePtr() *ServerHelloMsg {
 	if shm == nil {
 		return nil
 	} else {
-		return &serverHelloMsg{
+		return &ServerHelloMsg{
 			raw:                          shm.Raw,
 			vers:                         shm.Vers,
 			random:                       shm.Random,
@@ -296,7 +296,7 @@ func (shm *PubServerHelloMsg) getPrivatePtr() *serverHelloMsg {
 	}
 }
 
-func (shm *serverHelloMsg) getPublicPtr() *PubServerHelloMsg {
+func (shm *ServerHelloMsg) getPublicPtr() *PubServerHelloMsg {
 	if shm == nil {
 		return nil
 	} else {
@@ -358,14 +358,14 @@ type PubClientHelloMsg struct {
 	PskBinders                       [][]byte
 	QuicTransportParameters          []byte
 
-	cachedPrivateHello *clientHelloMsg // todo: further optimize to reduce clientHelloMsg construction
+	cachedPrivateHello *ClientHelloMsg // todo: further optimize to reduce ClientHelloMsg construction
 }
 
-func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
+func (chm *PubClientHelloMsg) getPrivatePtr() *ClientHelloMsg {
 	if chm == nil {
 		return nil
 	} else {
-		private := &clientHelloMsg{
+		private := &ClientHelloMsg{
 			raw:                              chm.Raw,
 			vers:                             chm.Vers,
 			random:                           chm.Random,
@@ -402,7 +402,7 @@ func (chm *PubClientHelloMsg) getPrivatePtr() *clientHelloMsg {
 	}
 }
 
-func (chm *PubClientHelloMsg) getCachedPrivatePtr() *clientHelloMsg {
+func (chm *PubClientHelloMsg) getCachedPrivatePtr() *ClientHelloMsg {
 	if chm == nil {
 		return nil
 	} else {
@@ -410,7 +410,7 @@ func (chm *PubClientHelloMsg) getCachedPrivatePtr() *clientHelloMsg {
 	}
 }
 
-func (chm *clientHelloMsg) getPublicPtr() *PubClientHelloMsg {
+func (chm *ClientHelloMsg) getPublicPtr() *PubClientHelloMsg {
 	if chm == nil {
 		return nil
 	} else {
@@ -452,7 +452,7 @@ func (chm *clientHelloMsg) getPublicPtr() *PubClientHelloMsg {
 // UnmarshalClientHello allows external code to parse raw client hellos.
 // It returns nil on failure.
 func UnmarshalClientHello(data []byte) *PubClientHelloMsg {
-	m := &clientHelloMsg{}
+	m := &ClientHelloMsg{}
 	if m.unmarshal(data) {
 		return m.getPublicPtr()
 	}
