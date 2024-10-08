@@ -41,7 +41,7 @@ func (hs *helloSpec) helloName() string {
 }
 
 func TestUTLSMarshalNoOp(t *testing.T) {
-	str := "We rely on clientHelloMsg.marshal() not doing anything if clientHelloMsg.raw is set"
+	str := "We rely on ClientHelloMsg.marshal() not doing anything if ClientHelloMsg.raw is set"
 	uconn := UClient(&net.TCPConn{}, &Config{ServerName: "foobar"}, HelloGolang)
 	msg, _, err := uconn.makeClientHello()
 	if err != nil {
@@ -50,10 +50,10 @@ func TestUTLSMarshalNoOp(t *testing.T) {
 	msg.raw = []byte(str)
 	marshalledHello, err := msg.marshal()
 	if err != nil {
-		t.Errorf("clientHelloMsg.marshal() returned error: %s", err.Error())
+		t.Errorf("ClientHelloMsg.marshal() returned error: %s", err.Error())
 	}
 	if strings.Compare(string(marshalledHello), str) != 0 {
-		t.Errorf("clientHelloMsg.marshal() is not NOOP! Expected to get: %s, got: %s", str, string(marshalledHello))
+		t.Errorf("ClientHelloMsg.marshal() is not NOOP! Expected to get: %s, got: %s", str, string(marshalledHello))
 	}
 }
 
