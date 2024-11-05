@@ -575,6 +575,30 @@ func aeadAESGCMTLS13(key, nonceMask []byte) aead {
 	return ret
 }
 
+func AeadAESGCMTLS13(key, nonceMask []byte) aead {
+	if len(nonceMask) != aeadNonceLength {
+		panic("tls: internal error: wrong nonce length")
+	}
+	aes, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+	var aead cipher.AEAD
+	if boring.Enabled {
+		aead, err = boring.NewGCMTLS13(aes)
+	} else {
+		boring.Unreachable()
+		aead, err = cipher.NewGCM(aes)
+	}
+	if err != nil {
+		panic(err)
+	}
+
+	ret := &xorNonceAEAD{aead: aead}
+	copy(ret.nonceMask[:], nonceMask)
+	return ret
+}
+
 func aeadChaCha20Poly1305(key, nonceMask []byte) aead {
 	if len(nonceMask) != aeadNonceLength {
 		panic("tls: internal error: wrong nonce length")
