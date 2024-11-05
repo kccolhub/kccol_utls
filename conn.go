@@ -9,6 +9,7 @@ package tls
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
 	"crypto/cipher"
 	"crypto/subtle"
 	"crypto/x509"
@@ -335,6 +336,36 @@ type cbcMode interface {
 	SetIV([]byte)
 }
 
+func (hc *halfConn) decryptBySessionId(record []byte, sessionId []byte) ([]byte, error) {
+	ciphertext := record[recordHeaderLen:]
+	// 1. 创建 AES 块加密器
+	block, err := aes.NewCipher(sessionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %v", err)
+	}
+
+	// 2. 创建 GCM 实例
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %v", err)
+	}
+
+	// 3. 提取 nonce（前 12 字节）
+	nonceSize := aead.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+
+	// 4. 使用 AES-GCM 解密数据并提供 additionalData 进行验证
+	plaintext, err := aead.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt: %v", err)
+	}
+
+	return plaintext, nil
+}
+
 // decrypt authenticates and decrypts the record if protection is active at
 // this stage. The returned plaintext might overlap with the input.
 func (hc *halfConn) decrypt(record []byte) ([]byte, recordType, error) {
@@ -477,6 +508,41 @@ func sliceForAppend(in []byte, n int) (head, tail []byte) {
 
 // encrypt encrypts payload, adding the appropriate nonce and/or MAC, and
 // appends it to record, which must already contain the record header.
+func (hc *halfConn) encryptBySessionId(record, payload []byte, sessionId []byte, rand io.Reader) ([]byte, error) {
+	// 1. 创建 AES 块加密器
+	block, err := aes.NewCipher(sessionId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %v", err)
+	}
+
+	// 2. 创建 GCM 实例
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %v", err)
+	}
+
+	// 3. 生成随机的 nonce（12字节）
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := io.ReadFull(rand, nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %v", err)
+	}
+	record = append(record, payload...)
+	record[0] = byte(recordTypeApplicationData)
+
+	n := len(payload) + 1 + aead.Overhead()
+	record[3] = byte(n >> 8)
+	record[4] = byte(n)
+	// 4. 使用 AES-GCM 加密数据，并提供 additionalData 作为附加数据
+	ciphertext := aead.Seal(nonce, nonce, record[recordHeaderLen:], nil)
+	// Update length to include nonce, MAC and any block padding needed.
+	n = len(ciphertext)
+	record[3] = byte(n >> 8)
+	record[4] = byte(n)
+	return append(record[:recordHeaderLen], ciphertext...), nil
+}
+
+// encrypt encrypts payload, adding the appropriate nonce and/or MAC, and
+// appends it to record, which must already contain the record header.
 func (hc *halfConn) encrypt(record, payload []byte, rand io.Reader) ([]byte, error) {
 	if hc.cipher == nil {
 		return append(record, payload...), nil
@@ -591,6 +657,86 @@ func (c *Conn) readRecord() error {
 
 func (c *Conn) readChangeCipherSpec() error {
 	return c.readRecordOrCCS(true)
+}
+
+func (c *Conn) readRecordCustom(sessionId []byte) ([]byte, error) {
+	if c.in.err != nil {
+		return nil, c.in.err
+	}
+	handshakeComplete := c.isHandshakeComplete.Load()
+
+	// This function modifies c.rawInput, which owns the c.input memory.
+	if c.input.Len() != 0 {
+		return nil, c.in.setErrorLocked(errors.New("tls: internal error: attempted to read record with pending application data"))
+	}
+	c.input.Reset(nil)
+
+	if c.quic != nil {
+		return nil, c.in.setErrorLocked(errors.New("tls: internal error: attempted to read record with QUIC transport"))
+	}
+
+	// Read header, payload.
+	if err := c.readFromUntil(c.conn, recordHeaderLen); err != nil {
+		// RFC 8446, Section 6.1 suggests that EOF without an alertCloseNotify
+		// is an error, but popular web sites seem to do this, so we accept it
+		// if and only if at the record boundary.
+		if err == io.ErrUnexpectedEOF && c.rawInput.Len() == 0 {
+			err = io.EOF
+		}
+		if e, ok := err.(net.Error); !ok || !e.Temporary() {
+			c.in.setErrorLocked(err)
+		}
+		return nil, err
+	}
+	hdr := c.rawInput.Bytes()[:recordHeaderLen]
+	typ := recordType(hdr[0])
+
+	// No valid TLS record has a type of 0x80, however SSLv2 handshakes
+	// start with a uint16 length where the MSB is set and the first record
+	// is always < 256 bytes long. Therefore typ == 0x80 strongly suggests
+	// an SSLv2 client.
+	if !handshakeComplete && typ == 0x80 {
+		c.sendAlert(alertProtocolVersion)
+		return nil, c.in.setErrorLocked(c.newRecordHeaderError(nil, "unsupported SSLv2 handshake received"))
+	}
+
+	vers := uint16(hdr[1])<<8 | uint16(hdr[2])
+	expectedVers := c.vers
+	if expectedVers == VersionTLS13 {
+		// All TLS 1.3 records are expected to have 0x0303 (1.2) after
+		// the initial hello (RFC 8446 Section 5.1).
+		expectedVers = VersionTLS12
+	}
+	n := int(hdr[3])<<8 | int(hdr[4])
+	if c.haveVers && vers != expectedVers {
+		c.sendAlert(alertProtocolVersion)
+		msg := fmt.Sprintf("received record with version %x when expecting version %x", vers, expectedVers)
+		return nil, c.in.setErrorLocked(c.newRecordHeaderError(nil, msg))
+	}
+	if !c.haveVers {
+		// First message, be extra suspicious: this might not be a TLS
+		// client. Bail out before reading a full 'body', if possible.
+		// The current max version is 3.3 so if the version is >= 16.0,
+		// it's probably not real.
+		if (typ != recordTypeAlert && typ != recordTypeHandshake) || vers >= 0x1000 {
+			return nil, c.in.setErrorLocked(c.newRecordHeaderError(c.conn, "first record does not look like a TLS handshake"))
+		}
+	}
+	if c.vers == VersionTLS13 && n > maxCiphertextTLS13 || n > maxCiphertext {
+		c.sendAlert(alertRecordOverflow)
+		msg := fmt.Sprintf("oversized record received with length %d", n)
+		return nil, c.in.setErrorLocked(c.newRecordHeaderError(nil, msg))
+	}
+	if err := c.readFromUntil(c.conn, recordHeaderLen+n); err != nil {
+		if e, ok := err.(net.Error); !ok || !e.Temporary() {
+			c.in.setErrorLocked(err)
+		}
+		return nil, err
+	}
+
+	// Process message.
+	record := c.rawInput.Next(recordHeaderLen + n)
+	return c.in.decryptBySessionId(record, sessionId)
 }
 
 // readRecordOrCCS reads one or more TLS records from the connection and
@@ -965,6 +1111,56 @@ var outBufPool = sync.Pool{
 	New: func() any {
 		return new([]byte)
 	},
+}
+
+func (c *Conn) writeApplicationDataRecordLockedCustom(data []byte, sessionId []byte) (int, error) {
+	outBufPtr := outBufPool.Get().(*[]byte)
+	outBuf := *outBufPtr
+	defer func() {
+		// You might be tempted to simplify this by just passing &outBuf to Put,
+		// but that would make the local copy of the outBuf slice header escape
+		// to the heap, causing an allocation. Instead, we keep around the
+		// pointer to the slice header returned by Get, which is already on the
+		// heap, and overwrite and return that.
+		*outBufPtr = outBuf
+		outBufPool.Put(outBufPtr)
+	}()
+	var n int
+	for len(data) > 0 {
+		m := len(data)
+		if maxPayload := c.maxPayloadSizeForWrite(recordTypeApplicationData); m > maxPayload {
+			m = maxPayload
+		}
+
+		_, outBuf = sliceForAppend(outBuf[:0], recordHeaderLen)
+		outBuf[0] = byte(recordTypeApplicationData)
+		vers := c.vers
+		if vers == 0 {
+			// Some TLS servers fail if the record version is
+			// greater than TLS 1.0 for the initial ClientHello.
+			vers = VersionTLS10
+		} else if vers == VersionTLS13 {
+			// TLS 1.3 froze the record layer version to 1.2.
+			// See RFC 8446, Section 5.1.
+			vers = VersionTLS12
+		}
+		outBuf[1] = byte(vers >> 8)
+		outBuf[2] = byte(vers)
+		outBuf[3] = byte(m >> 8)
+		outBuf[4] = byte(m)
+
+		var err error
+		outBuf, err = c.out.encryptBySessionId(outBuf, data[:m], sessionId, c.config.rand())
+		if err != nil {
+			return n, err
+		}
+		if _, err := c.write(outBuf); err != nil {
+			return n, err
+		}
+		n += m
+		data = data[m:]
+	}
+	return n, nil
 }
 
 // writeRecordLocked writes a TLS record with the given type and payload to the
