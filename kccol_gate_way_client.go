@@ -100,3 +100,15 @@ func (c *KccolGateWayClient) ReadFromNextUtil() ([]byte, error) {
 	result, err := c.topLayer().ReadFromNextUtil()
 	return result[:], err
 }
+
+func (c *KccolGateWayClient) SetKeepAlive() error {
+	err := c.conn.SetKeepAlive(true)
+	if err != nil {
+		return err
+	}
+	err = c.conn.SetKeepAlivePeriod(30 * time.Second)
+	if err != nil {
+		return err
+	}
+	return nil
+}
