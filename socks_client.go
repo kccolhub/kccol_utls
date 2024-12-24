@@ -37,7 +37,7 @@ func (c *Socks5Client) InitWithDomain(domain string) error {
 		return err
 	}
 	for _, ip := range ips {
-		err := c.Init(ip + ":443")
+		_, err := c.Init(ip + ":443")
 		if err != nil {
 			continue
 		}
@@ -47,22 +47,42 @@ func (c *Socks5Client) InitWithDomain(domain string) error {
 	return errors.New("failed to init client")
 }
 
-func (c *Socks5Client) Init(dst string) error {
+func (c *Socks5Client) Init(dst string) (*Reply, error) {
 	err := c.negotiate()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	a, h, p, err := ParseAddress(dst)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if a == ATYPDomain {
 		h = h[1:]
 	}
-	if _, err := c.Request(NewRequest(CmdConnect, a, h, p)); err != nil {
-		return err
+	rp, err := c.Request(NewRequest(CmdConnect, a, h, p))
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	return rp, nil
+}
+
+func (c *Socks5Client) InitUDP(dst string) (*Reply, error) {
+	err := c.negotiate()
+	if err != nil {
+		return nil, err
+	}
+	a, h, p, err := ParseAddress(dst)
+	if err != nil {
+		return nil, err
+	}
+	if a == ATYPDomain {
+		h = h[1:]
+	}
+	rp, err := c.Request(NewRequest(CmdUDP, a, h, p))
+	if err != nil {
+		return nil, err
+	}
+	return rp, nil
 }
 
 func (c *Socks5Client) negotiate() error {

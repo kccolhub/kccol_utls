@@ -1,5 +1,10 @@
 package tls
 
+import (
+	"encoding/binary"
+	"net"
+)
+
 const (
 	// Ver is socks protocol version
 	Ver byte = 0x05
@@ -116,4 +121,17 @@ type Datagram struct {
 	DstAddr []byte
 	DstPort []byte // 2 bytes
 	Data    []byte
+}
+
+func (rp *Reply) UDPAddr() *net.UDPAddr {
+	var port int
+	switch rp.Atyp {
+	case ATYPDomain /* unsupported */ :
+		return nil
+	case ATYPIPv4:
+		port = int(binary.BigEndian.Uint16(rp.BndAddr))
+	case ATYPIPv6:
+		port = int(binary.BigEndian.Uint16(rp.BndAddr))
+	}
+	return &net.UDPAddr{IP: rp.BndAddr, Port: port}
 }
