@@ -18,7 +18,8 @@ func TestNewKccolGateWayClient(t *testing.T) {
 		Transport: &http.Transport{
 			Dial: func(network, addr string) (net.Conn, error) {
 				kccol := NewKccolGateWayClient("127.0.0.1:8080")
-				return kccol, kccol.Init(addr, "test", "test")
+				_, err := kccol.Init(addr, "test", "test")
+				return kccol, err
 			},
 		},
 	}
