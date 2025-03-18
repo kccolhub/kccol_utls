@@ -10,6 +10,8 @@ import (
 )
 
 type KccolTLSLayer struct {
+	uniqueClientId    string
+	clientCode        [6]byte
 	conn              net.Conn
 	tlsClient         *UConn
 	lastLayer         ITransferLayer
@@ -21,17 +23,23 @@ type KccolTLSLayer struct {
 	sessionId [32]byte
 }
 
-func NewKccolTLSLayer() *KccolTLSLayer {
+func NewKccolTLSLayer(uniqueClientId string) *KccolTLSLayer {
 	return &KccolTLSLayer{
+		uniqueClientId:    uniqueClientId,
 		handshakeFinished: false,
 		sessionId:         [32]byte{},
 	}
 }
 
 func (kl *KccolTLSLayer) Init(conn net.Conn) error {
+	hash, err := utils.StringTo6ByteHash(kl.uniqueClientId)
+	kl.clientCode = hash
+	if err != nil {
+		return err
+	}
 	kl.conn = conn
 	kl.handshakeFinished = false
-	err := kl.handshake()
+	err = kl.handshake()
 	if err != nil {
 		return err
 	}
@@ -95,7 +103,7 @@ func (kl *KccolTLSLayer) handshake() error {
 	if err != nil {
 		return err
 	}
-	sessionId, err := getSessionId()
+	sessionId, err := kl.getSessionId()
 	kl.sessionId = sessionId
 	if err != nil {
 		return fmt.Errorf("get session id error error: %+v", err)
@@ -133,14 +141,14 @@ func (kl *KccolTLSLayer) ReadFromNextUtil() ([]byte, error) {
 	return result[:], err
 }
 
-func getSessionId() ([32]byte, error) {
+func (kl *KccolTLSLayer) getSessionId() ([32]byte, error) {
 	inviteCode, err := utils.RandomInviteCode()
 	if err != nil {
 		return [32]byte{}, err
 	}
 
 	//sessionId := po.NewSessionId(uint32(time.Now().Unix()), inviteCode, [6]byte{})
-	sessionId, err := utils.NewSessionIdWithDefaultClientCode(uint32(time.Now().Unix()), inviteCode)
+	sessionId, err := utils.NewSessionIdWithClientCode(uint32(time.Now().Unix()), inviteCode, kl.clientCode)
 	if err != nil {
 		return [32]byte{}, fmt.Errorf("po.NewSessionIdWithDefaultClientCode error: %+v", err)
 	}

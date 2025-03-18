@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"math/big"
@@ -33,6 +34,17 @@ func SubtractFromEach32Bit(data []byte, subValue uint32) {
 			binary.BigEndian.PutUint32(data[i:i+4], value)
 		}
 	}
+}
+
+func StringTo6ByteHash(input string) ([6]byte, error) {
+	// 使用 SHA-256 对字符串进行哈希
+	hash := sha256.Sum256([]byte(input))
+
+	// 获取哈希值的前 6 字节
+	var result [6]byte
+	copy(result[:], hash[:6])
+
+	return [6]byte(result[:]), nil
 }
 
 func AddFromEach32Bit(data []byte, subValue uint32) {

@@ -9,18 +9,20 @@ import (
 )
 
 type KccolGateWayClient struct {
-	serverName   string
-	socks5Client *Socks5Client
-	tlsLayer     *KccolTLSLayer
-	conn         *net.TCPConn
-	rawInput     bytes.Buffer
+	serverName     string
+	uniqueClientId string
+	socks5Client   *Socks5Client
+	tlsLayer       *KccolTLSLayer
+	conn           *net.TCPConn
+	rawInput       bytes.Buffer
 	io.ReadWriteCloser
 	net.Conn
 }
 
-func NewKccolGateWayClient(serverName string) *KccolGateWayClient {
+func NewKccolGateWayClient(serverName string, uniqueClientId string) *KccolGateWayClient {
 	return &KccolGateWayClient{
-		serverName: serverName,
+		serverName:     serverName,
+		uniqueClientId: uniqueClientId,
 	}
 }
 
@@ -43,7 +45,7 @@ func (c *KccolGateWayClient) Init(addr string, userName string, password string)
 	} // 每 30 秒发送一次 Keep-Alive
 
 	c.conn = tcpConn
-	c.tlsLayer = NewKccolTLSLayer()
+	c.tlsLayer = NewKccolTLSLayer(c.uniqueClientId)
 	err = c.tlsLayer.Init(conn)
 	if err != nil {
 		return nil, err
@@ -79,7 +81,7 @@ func (c *KccolGateWayClient) InitUDP(addr string, userName string, password stri
 	} // 每 30 秒发送一次 Keep-Alive
 
 	c.conn = tcpConn
-	c.tlsLayer = NewKccolTLSLayer()
+	c.tlsLayer = NewKccolTLSLayer(c.uniqueClientId)
 	err = c.tlsLayer.Init(conn)
 	if err != nil {
 		return nil, err

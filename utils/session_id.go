@@ -37,6 +37,14 @@ func NewSessionIdWithDefaultClientCode(realTime uint32, inviteCode string) (*Ses
 	}, nil
 }
 
+func NewSessionIdWithClientCode(realTime uint32, inviteCode string, clientCode [6]byte) (*SessionId, error) {
+	return &SessionId{
+		RealTime:   realTime,
+		InviteCode: paddingInviteCode(inviteCode, inviteCodeLength),
+		ClientCode: clientCode,
+	}, nil
+}
+
 func paddingInviteCode(inviteCode string, length int) string {
 	inviteCodeBytes := []byte(inviteCode)
 	if len(inviteCodeBytes) > length {
