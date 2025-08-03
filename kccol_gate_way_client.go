@@ -107,7 +107,10 @@ func (c *KccolGateWayClient) Write(p []byte) (int, error) {
 }
 
 func (c *KccolGateWayClient) Close() error {
-	return c.conn.Close()
+	if c.conn != nil {
+		return c.conn.Close()
+	}
+	return nil
 }
 
 func (c *KccolGateWayClient) Read(p []byte) (int, error) {

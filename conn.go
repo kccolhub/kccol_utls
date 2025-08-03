@@ -674,7 +674,7 @@ func (c *Conn) readRecordCustom(sessionId []byte) ([]byte, error) {
 	if c.quic != nil {
 		return nil, c.in.setErrorLocked(errors.New("tls: internal error: attempted to read record with QUIC transport"))
 	}
-
+	fmt.Printf("read before length %d\n", c.rawInput.Len())
 	// Read header, payload.
 	if err := c.readFromUntil(c.conn, recordHeaderLen); err != nil {
 		// RFC 8446, Section 6.1 suggests that EOF without an alertCloseNotify
@@ -688,6 +688,7 @@ func (c *Conn) readRecordCustom(sessionId []byte) ([]byte, error) {
 		}
 		return nil, err
 	}
+	fmt.Printf("read after length %d\n", c.rawInput.Len())
 	hdr := c.rawInput.Bytes()[:recordHeaderLen]
 	typ := recordType(hdr[0])
 
